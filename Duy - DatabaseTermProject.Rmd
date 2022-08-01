@@ -1,0 +1,279 @@
+---
+title: "DatabaseTermProject"
+author: "Duy Nguyen"
+date: '2022-07-20'
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries
+```{r}
+library(ggplot2)          # ggplot()
+
+library(mongolite)
+library(GGally)           # ggcorr() | ggpairs()
+## For corpus creation
+library(stringr)
+library(bitops)
+library(NLP)              # as.String()
+
+library(tm)
+
+## for lemantizing wordcloud and graph words
+library(pacman)
+pacman::p_load_gh("trinker/textstem")
+pacman::p_load(textstem, dplyr)
+
+## For Word Cloud
+library(RColorBrewer)
+library(wordcloud)
+
+## For clustering of words
+#library(graph)
+
+## For sentiments  analysis
+library(syuzhet)
+
+library(scales)            #blank_theme()
+
+## Color Pallette
+pallette = brewer.pal(8,"Dark2")
+```
+
+# Connect to MongoDB
+```{r}
+connection = 'mongodb://localhost:27017'
+hotelreviews = mongo(collection = "reviews",
+                     db = "HotelReviews",
+                     url = connection)
+hotelreviews$count()
+
+```
+
+# Data Prep
+```{r}
+df = hotelreviews$find(sort = '{"positive" : -1}',
+                       fields = '{"Name" : true,
+                                  "Contribution" : true,
+                                  "Rating" : true,
+                                  "Review" : true,
+                                  "TripType" : true,
+                                  "HotelName" : true,
+                                  "City" : true}')
+str(df)
+
+# Omit ID column
+df = df[-c(1)]
+str(df)
+
+# Naturally Factor Variables
+factor_vars = c("TripType")
+df[factor_vars] = lapply(df[factor_vars], as.factor)
+str(df)
+
+blank_theme <- theme_minimal() +
+  theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.border = element_blank(),
+  panel.grid=element_blank(),
+  axis.ticks = element_blank(),
+  plot.title=element_text(size=14, face="bold")
+  )
+
+df$Rating = as.factor(df$Rating)
+str(df$Rating)
+df_rating = as.data.frame(table(df$Rating))
+ggplot(df_rating, aes(x="", y=Freq, fill=Var1)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start=0) +
+  scale_fill_brewer("Ratings") + blank_theme +
+  theme(axis.text.x=element_blank())
+
+# City
+df$City = sub("There are more places to choose from in the ", "", df$City)
+df$City = sub(" area.", "", df$City)
+table(df$City)
+```
+
+# EDA: Word Cloud
+```{r}
+# Creating Corpus
+corpus = Corpus(VectorSource(df$Review))
+# Clean
+clean = tm_map(corpus, removePunctuation)
+clean = tm_map(clean, content_transformer(tolower))
+clean = tm_map(clean, removeNumbers)
+clean = tm_map(clean, stripWhitespace)
+clean = tm_map(clean, removeWords, 
+               c(stopwords("english"), stopwords("french"),
+                 "paris", "hotel", "one", "two", "airport", "terminal", 
+                 "really", "just", "flight", "very", "quite", "rather",
+                 "didnt", "youre", "westin", "marriot", "stay", "stayed",
+                 "will", "also", "day", "time", "rooms"
+                 )) 
+# Lementize corpus
+word.cloud = lemmatize_words(clean)
+saveRDS(word.cloud, "wordcloud_1.RDS")
+
+# Word Cloud 
+wordcloud(word.cloud, random.order = F, max.words = 20, 
+          scale = c(5,1), colors = pallette)
+
+```
+
+# EDA: Traveller Type
+```{r}
+df$TripType = as.factor(sub('Trip type: Travelled ', '', df$TripType))
+str(df)
+
+plot(df$TripType, main = "Types of Travellers ", col = pallette)
+plot(Rating ~ TripType, data = df, 
+     col = c("#00af87", "#12ffc9", "#afffed", "#ffffff"), 
+     main = "Types of Travellers in Paris")
+legend("left", legend = c("35", "40", "45", "50"), 
+       col = c("#ffffff", "#afffed", "#12ffc9", "#00af87"), 
+       lty=1, lwd=1)
+
+```
+
+### Couples
+```{r}
+df_couple = df[df$TripType == "as a couple",]
+# Creating Corpus
+corpus = Corpus(VectorSource(df_couple$Review))
+# Clean
+clean = tm_map(corpus, removePunctuation)
+clean = tm_map(clean, content_transformer(tolower))
+clean = tm_map(clean, removeNumbers)
+clean = tm_map(clean, stripWhitespace)
+clean = tm_map(clean, removeWords, 
+               c(stopwords("english"), stopwords("french"),
+                 "paris", "hotel", "one", "two", "airport", "terminal", 
+                 "really", "just", "flight", "very", "quite", "rather",
+                 "didnt", "youre", "westin", "marriot", "stay", "stayed",
+                 "will", "also", "day", "time", "rooms"
+                 )) 
+# Lementize corpus
+word.cloud = lemmatize_words(clean)
+saveRDS(word.cloud, "wordcloud_1.RDS")
+
+# Word Cloud 
+wordcloud(word.cloud, random.order = F, max.words = 10, 
+          scale = c(5,1), colors = pallette, main = "M")
+```
+
+### Business
+```{r}
+df_business = df[df$TripType == "on business",]
+# Creating Corpus
+corpus = Corpus(VectorSource(df_business$Review))
+# Clean
+clean = tm_map(corpus, removePunctuation)
+clean = tm_map(clean, content_transformer(tolower))
+clean = tm_map(clean, removeNumbers)
+clean = tm_map(clean, stripWhitespace)
+clean = tm_map(clean, removeWords, 
+               c(stopwords("english"), stopwords("french"),
+                 "paris", "hotel", "one", "two", "airport", "terminal", 
+                 "really", "just", "flight", "very", "quite", "rather",
+                 "didnt", "youre", "westin", "marriot", "stay", "stayed",
+                 "will", "also", "day", "time", "rooms"
+                 )) 
+# Lementize corpus
+word.cloud = lemmatize_words(clean)
+saveRDS(word.cloud, "wordcloud_1.RDS")
+
+# Word Cloud 
+wordcloud(word.cloud, random.order = F, max.words = 10, 
+          scale = c(5,1), colors = pallette, main = "M")
+```
+
+### Solo
+```{r}
+df_solo = df[df$TripType == "solo",]
+# Creating Corpus
+corpus = Corpus(VectorSource(df_solo$Review))
+# Clean
+clean = tm_map(corpus, removePunctuation)
+clean = tm_map(clean, content_transformer(tolower))
+clean = tm_map(clean, removeNumbers)
+clean = tm_map(clean, stripWhitespace)
+clean = tm_map(clean, removeWords, 
+               c(stopwords("english"), stopwords("french"),
+                 "paris", "hotel", "one", "two", "airport", "terminal", 
+                 "really", "just", "flight", "very", "quite", "rather",
+                 "didnt", "youre", "westin", "marriot", "stay", "stayed",
+                 "will", "also", "day", "time", "rooms"
+                 )) 
+# Lementize corpus
+word.cloud = lemmatize_words(clean)
+saveRDS(word.cloud, "wordcloud_1.RDS")
+
+# Word Cloud 
+wordcloud(word.cloud, random.order = F, max.words = 10, 
+          scale = c(5,1), colors = pallette, main = "M")
+```
+
+### Family
+```{r}
+df_family = df[df$TripType == "with family",]
+# Creating Corpus
+corpus = Corpus(VectorSource(df_family$Review))
+# Clean
+clean = tm_map(corpus, removePunctuation)
+clean = tm_map(clean, content_transformer(tolower))
+clean = tm_map(clean, removeNumbers)
+clean = tm_map(clean, stripWhitespace)
+clean = tm_map(clean, removeWords, 
+               c(stopwords("english"), stopwords("french"),
+                 "paris", "hotel", "one", "two", "airport", "terminal", 
+                 "really", "just", "flight", "very", "quite", "rather",
+                 "didnt", "youre", "westin", "marriot", "stay", "stayed",
+                 "will", "also", "day", "time", "rooms"
+                 )) 
+# Lementize corpus
+word.cloud = lemmatize_words(clean)
+saveRDS(word.cloud, "wordcloud_1.RDS")
+
+# Word Cloud 
+wordcloud(word.cloud, random.order = F, max.words = 10, 
+          scale = c(5,1), colors = pallette, main = "M")
+```
+
+### Friends
+```{r}
+df_friends = df[df$TripType == "as a couple",]
+# Creating Corpus
+corpus = Corpus(VectorSource(df_friends$Review))
+# Clean
+clean = tm_map(corpus, removePunctuation)
+clean = tm_map(clean, content_transformer(tolower))
+clean = tm_map(clean, removeNumbers)
+clean = tm_map(clean, stripWhitespace)
+clean = tm_map(clean, removeWords, 
+               c(stopwords("english"), stopwords("french"),
+                 "paris", "hotel", "one", "two", "airport", "terminal", 
+                 "really", "just", "flight", "very", "quite", "rather",
+                 "didnt", "youre", "westin", "marriot", "stay", "stayed",
+                 "will", "also", "day", "time", "rooms"
+                 )) 
+# Lementize corpus
+word.cloud = lemmatize_words(clean)
+saveRDS(word.cloud, "wordcloud_1.RDS")
+
+# Word Cloud 
+wordcloud(word.cloud, random.order = F, max.words = 10, 
+          scale = c(5,1), colors = pallette, main = "M")
+```
+
+# people who consistently review negatively
+# people who consistently review positively
+# as a hotel owner, target the more critical reviewers
+
+### https://rpubs.com/qasimahmed/TorontoHotelSentimentAnalysis
